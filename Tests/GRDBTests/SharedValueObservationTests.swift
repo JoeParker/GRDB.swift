@@ -523,10 +523,10 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         let log = Log()
-        var fetchError: Error? = nil
+        let fetchErrorMutex: Mutex<Error?> = Mutex(nil)
         let publisher = ValueObservation
             .tracking { db -> Int in
-                if let error = fetchError { throw error }
+                if let error = fetchErrorMutex.value { throw error }
                 return try Table("player").fetchCount(db)
             }
             .print(to: log)
@@ -540,7 +540,7 @@ class SharedValueObservationTests: GRDBTestCase {
             try XCTAssertEqual(wait(for: recorder1.next(), timeout: 1), 0)
             try XCTAssertEqual(wait(for: recorder2.next(), timeout: 1), 0)
             
-            fetchError = TestError()
+            fetchErrorMutex.value = TestError()
             try dbQueue.write { try $0.execute(sql: "INSERT INTO player DEFAULT VALUES")}
             
             if case .finished = try wait(for: recorder1.completion, timeout: 1) { XCTFail("Expected error") }
@@ -557,7 +557,7 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         do {
-            fetchError = nil
+            fetchErrorMutex.value = nil
             let recorder = publisher.record()
             if case .finished = try wait(for: recorder.completion, timeout: 1) { XCTFail("Expected error") }
             XCTAssertEqual(log.flush(), [])
@@ -579,10 +579,10 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         let log = Log()
-        var fetchError: Error? = nil
+        let fetchErrorMutex: Mutex<Error?> = Mutex(nil)
         let publisher = ValueObservation
             .tracking { db -> Int in
-                if let error = fetchError { throw error }
+                if let error = fetchErrorMutex.value { throw error }
                 return try Table("player").fetchCount(db)
             }
             .print(to: log)
@@ -596,7 +596,7 @@ class SharedValueObservationTests: GRDBTestCase {
             try XCTAssertEqual(wait(for: recorder1.next(), timeout: 1), 0)
             try XCTAssertEqual(wait(for: recorder2.next(), timeout: 1), 0)
             
-            fetchError = TestError()
+            fetchErrorMutex.value = TestError()
             try dbQueue.write { try $0.execute(sql: "INSERT INTO player DEFAULT VALUES")}
             
             if case .finished = try wait(for: recorder1.completion, timeout: 1) { XCTFail("Expected error") }
@@ -613,7 +613,7 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         do {
-            fetchError = nil
+            fetchErrorMutex.value = nil
             let recorder = publisher.record()
             try XCTAssertEqual(wait(for: recorder.next(), timeout: 1), 1)
             XCTAssertEqual(log.flush(), ["start", "fetch", "tracked region: player(*)", "value: 1"])
