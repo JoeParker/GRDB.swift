@@ -622,7 +622,9 @@ extension DatabaseReader {
             asyncRead { dbResult in
                 if cancellable.isCancelled { return }
                 
-                let result = dbResult.flatMap { db in
+                // Safe because result is not used beyond its transfer to sheduler
+                // FIXME: improve when SE-0430 is shipped.
+                nonisolated(unsafe) let result = dbResult.flatMap { db in
                     Result { try observation.fetchInitialValue(db) }
                 }
                 
