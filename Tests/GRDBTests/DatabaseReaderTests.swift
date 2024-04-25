@@ -213,7 +213,7 @@ class DatabaseReaderTests : GRDBTestCase {
                 // Make sure this block executes asynchronously
                 semaphore.wait()
                 do {
-                    countMutex.value = try Int.fetchOne(dbResult.get(), sql: "SELECT COUNT(*) FROM sqlite_master")
+                    try countMutex.store(Int.fetchOne(dbResult.get(), sql: "SELECT COUNT(*) FROM sqlite_master"))
                 } catch {
                     XCTFail("Unexpected error: \(error)")
                 }
@@ -222,7 +222,7 @@ class DatabaseReaderTests : GRDBTestCase {
             semaphore.signal()
             
             waitForExpectations(timeout: 1, handler: nil)
-            XCTAssertNotNil(countMutex.value)
+            XCTAssertNotNil(countMutex.load())
         }
         
         try test(makeDatabaseQueue())
