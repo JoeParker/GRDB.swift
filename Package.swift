@@ -7,6 +7,9 @@ import PackageDescription
 var swiftSettings: [SwiftSetting] = [
     .define("SQLITE_ENABLE_FTS5"),
     .enableUpcomingFeature("StrictConcurrency"),
+    // Can't enable SE-0418 Inferring Sendable for methods and key path literals
+    // yet, because of <https://github.com/apple/swift/issues/73313>
+    // .enableUpcomingFeature("InferSendableFromCaptures")
 ]
 var cSettings: [CSetting] = []
 var dependencies: [PackageDescription.Package.Dependency] = []

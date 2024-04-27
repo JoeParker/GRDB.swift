@@ -148,7 +148,7 @@ class DatabasePoolTests: GRDBTestCase {
         }
         do {
             let dbPool = try makeDatabasePool(filename: "test")
-            let count = try dbPool.read(Table("t").fetchCount)
+            let count = try dbPool.read { try Table("t").fetchCount($0) }
             XCTAssertEqual(count, 0)
         }
     }

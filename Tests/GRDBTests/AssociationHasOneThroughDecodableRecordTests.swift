@@ -73,7 +73,7 @@ class AssociationHasOneThroughDecodableRecordTests: GRDBTestCase {
             .including(required: A.c)
             .order(sql: "a.id")
             .asRequest(of: AWithRequiredC.self)
-        let records = try dbQueue.inDatabase(request.fetchAll)
+        let records = try dbQueue.inDatabase { try request.fetchAll($0) }
 
         XCTAssertEqual(records.count, 1)
         
@@ -90,7 +90,7 @@ class AssociationHasOneThroughDecodableRecordTests: GRDBTestCase {
             .including(optional: AWithOptionalC.c)
             .order(sql: "a.id")
             .asRequest(of: AWithOptionalC.self)
-        let records = try dbQueue.inDatabase(request.fetchAll)
+        let records = try dbQueue.inDatabase { try request.fetchAll($0) }
         
         XCTAssertEqual(records.count, 3)
         
@@ -116,7 +116,7 @@ class AssociationHasOneThroughDecodableRecordTests: GRDBTestCase {
         let request = A
             .joining(required: A.c)
             .order(sql: "a.id")
-        let records = try dbQueue.inDatabase(request.fetchAll)
+        let records = try dbQueue.inDatabase { try request.fetchAll($0) }
 
         XCTAssertEqual(records.count, 1)
         
@@ -130,7 +130,7 @@ class AssociationHasOneThroughDecodableRecordTests: GRDBTestCase {
         let request = A
             .joining(optional: A.c)
             .order(sql: "a.id")
-        let records = try dbQueue.inDatabase(request.fetchAll)
+        let records = try dbQueue.inDatabase { try request.fetchAll($0) }
         
         XCTAssertEqual(records.count, 3)
         
@@ -154,7 +154,7 @@ class AssociationHasOneThroughDecodableRecordTests: GRDBTestCase {
             .including(required: A.b)
             .order(sql: "a.id")
             .asRequest(of: AWithRequiredBAndOptionalC.self)
-        let records = try dbQueue.inDatabase(request.fetchAll)
+        let records = try dbQueue.inDatabase { try request.fetchAll($0) }
         
         XCTAssertEqual(records.count, 2)
         

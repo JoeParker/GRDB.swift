@@ -97,7 +97,7 @@ class ValueObservationTests: GRDBTestCase {
         let regionMutex: Mutex<DatabaseRegion?> = Mutex(nil)
         let expectation = self.expectation(description: "")
         let observation = ValueObservation
-            .trackingConstantRegion(request.fetchAll)
+            .trackingConstantRegion { try request.fetchAll($0) }
             .handleEvents(willTrackRegion: {
                 regionMutex.store($0)
                 expectation.fulfill()
@@ -131,7 +131,7 @@ class ValueObservationTests: GRDBTestCase {
         let regionMutex: Mutex<DatabaseRegion?> = Mutex(nil)
         let expectation = self.expectation(description: "")
         let observation = ValueObservation
-            .trackingConstantRegion(request.fetchAll)
+            .trackingConstantRegion { try request.fetchAll($0) }
             .handleEvents(willTrackRegion: {
                 regionMutex.store($0)
                 expectation.fulfill()
@@ -160,7 +160,9 @@ class ValueObservationTests: GRDBTestCase {
         do {
             try assertValueObservation(
                 ValueObservation
-                    .tracking(region: DatabaseRegion.fullDatabase, fetch: Table("t").fetchCount),
+                    .tracking(
+                        region: DatabaseRegion.fullDatabase,
+                        fetch: { try Table("t").fetchCount($0) }),
                 records: [0, 1, 1, 2, 3, 4],
                 setup: { db in
                     try db.execute(sql: """
@@ -194,7 +196,7 @@ class ValueObservationTests: GRDBTestCase {
             let logger = TestStream()
             let observation = ValueObservation.tracking(
                 region: Table("t"),
-                fetch: Table("t").fetchCount)
+                fetch: { try Table("t").fetchCount($0) })
                 .print(to: logger)
             
             let expectation = self.expectation(description: "")
@@ -238,7 +240,7 @@ class ValueObservationTests: GRDBTestCase {
             let logger = TestStream()
             let observation = ValueObservation.tracking(
                 region: Table("other"),
-                fetch: Table("t").fetchCount)
+                fetch: { try Table("t").fetchCount($0) })
                 .print(to: logger)
             
             let expectation = self.expectation(description: "")
@@ -282,7 +284,7 @@ class ValueObservationTests: GRDBTestCase {
             let logger = TestStream()
             let observation = ValueObservation.tracking(
                 region: Table("t"), Table("other"),
-                fetch: Table("t").fetchCount)
+                fetch: { try Table("t").fetchCount($0) })
                 .print(to: logger)
             
             let expectation = self.expectation(description: "")
@@ -800,7 +802,7 @@ class ValueObservationTests: GRDBTestCase {
             // Observe N times
             let cancellables = (0..<N).map { _ in
                 ValueObservation
-                    .tracking(Table("t").fetchCount)
+                    .tracking { try Table("t").fetchCount($0) }
                     .removeDuplicates()
                     .start(
                         in: dbWriter,
@@ -841,7 +843,7 @@ class ValueObservationTests: GRDBTestCase {
             let task = Task { () -> [Int] in
                 var counts: [Int] = []
                 let observation = ValueObservation
-                    .trackingConstantRegion(Table("t").fetchCount)
+                    .trackingConstantRegion { try Table("t").fetchCount($0) }
                     .handleEvents(didCancel: { cancellationExpectation.fulfill() })
                 
                 for try await count in try observation.values(in: writer).prefix(while: { $0 <= 3 }) {
@@ -875,7 +877,7 @@ class ValueObservationTests: GRDBTestCase {
             let task = Task { () -> [Int] in
                 var counts: [Int] = []
                 let observation = ValueObservation
-                    .trackingConstantRegion(Table("t").fetchCount)
+                    .trackingConstantRegion { try Table("t").fetchCount($0) }
                     .handleEvents(didCancel: { cancellationExpectation.fulfill() })
                 
                 for try await count in observation.values(in: writer) {
@@ -914,7 +916,7 @@ class ValueObservationTests: GRDBTestCase {
             // Launch a task that we'll cancel
             let cancelledTask = Task<String, Error> {
                 // Loops until cancelled
-                let observation = ValueObservation.trackingConstantRegion(Table("t").fetchCount)
+                let observation = ValueObservation.trackingConstantRegion { try Table("t").fetchCount($0) }
                 let cancelledObservation = observation.handleEvents(didCancel: {
                     cancellationExpectation.fulfill()
                 })
@@ -924,7 +926,7 @@ class ValueObservationTests: GRDBTestCase {
             
             // Lanch the task that cancels
             Task {
-                let observation = ValueObservation.trackingConstantRegion(Table("t").fetchCount)
+                let observation = ValueObservation.trackingConstantRegion { try Table("t").fetchCount($0) }
                 for try await count in observation.values(in: writer) {
                     if count >= 3 {
                         cancelledTask.cancel()
@@ -1083,7 +1085,9 @@ class ValueObservationTests: GRDBTestCase {
             // transaction observer.
             let installedExpectation = expectation(description: "transaction observer installed")
             let finalExpectation = expectation(description: "final value")
-            let initialObservation = ValueObservation.trackingConstantRegion(Table("s").fetchCount)
+            let initialObservation = ValueObservation.trackingConstantRegion {
+                try Table("s").fetchCount($0)
+            }
             let cancellable = initialObservation.start(
                 in: writer,
                 // Immediate initial value so that the next value comes
@@ -1115,7 +1119,9 @@ class ValueObservationTests: GRDBTestCase {
             
             // Start as many observations as there are readers
             for _ in 0..<writer.configuration.maximumReaderCount {
-                let observation = ValueObservation.trackingConstantRegion(Table("s").fetchCount)
+                let observation = ValueObservation.trackingConstantRegion {
+                    try Table("s").fetchCount($0)
+                }
                 let cancellable = observation.start(
                     in: writer,
                     onError: { error in XCTFail("Unexpected error: \(error)") },
@@ -1152,7 +1158,7 @@ class ValueObservationTests: GRDBTestCase {
         
         do {
             let dbPool = try makeDatabasePool(filename: "test")
-            let observation = ValueObservation.tracking(Table("t").fetchCount)
+            let observation = ValueObservation.tracking { try Table("t").fetchCount($0) }
             _ = observation.start(
                 in: dbPool, scheduling: .immediate,
                 onError: { error in
@@ -1176,7 +1182,7 @@ class ValueObservationTests: GRDBTestCase {
         
         do {
             let dbPool = try makeDatabasePool(filename: "test")
-            let observation = ValueObservation.tracking(Table("t").fetchCount)
+            let observation = ValueObservation.tracking { try Table("t").fetchCount($0) }
             let expectation = self.expectation(description: "completion")
             expectation.assertForOverFulfill = false
             let cancellable = observation.start(
@@ -1202,7 +1208,7 @@ class ValueObservationTests: GRDBTestCase {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent().appendingPathComponent("Issue1383.sqlite-shm"))
         
         let dbPool = try DatabasePool(path: url.path)
-        let observation = ValueObservation.tracking(Table("t").fetchCount)
+        let observation = ValueObservation.tracking { try Table("t").fetchCount($0) }
         _ = observation.start(
             in: dbPool, scheduling: .immediate,
             onError: { error in

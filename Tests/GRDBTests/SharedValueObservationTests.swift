@@ -12,7 +12,7 @@ class SharedValueObservationTests: GRDBTestCase {
         
         let log = Log()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -64,7 +64,7 @@ class SharedValueObservationTests: GRDBTestCase {
         
         let log = Log()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -116,7 +116,7 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         let publisher = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .shared(
                 in: dbQueue,
                 scheduling: .immediate)
@@ -148,7 +148,7 @@ class SharedValueObservationTests: GRDBTestCase {
         
         let log = Log()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -200,7 +200,7 @@ class SharedValueObservationTests: GRDBTestCase {
         
         let log = Log()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -246,7 +246,7 @@ class SharedValueObservationTests: GRDBTestCase {
         
         let log = Log()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -341,7 +341,7 @@ class SharedValueObservationTests: GRDBTestCase {
         let log = Log()
         let sharedObservationMutex: Mutex<SharedValueObservation<Int>?> = Mutex(nil)
         sharedObservationMutex.store(ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -394,7 +394,7 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         let publisher = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .shared(in: dbQueue) // default async
             .publisher()
         
@@ -426,7 +426,7 @@ class SharedValueObservationTests: GRDBTestCase {
         
         let log = Log()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
             .shared(
                 in: dbQueue,
@@ -632,7 +632,7 @@ class SharedValueObservationTests: GRDBTestCase {
         }
         
         let values = ValueObservation
-            .tracking(Table("player").fetchCount)
+            .tracking { try Table("player").fetchCount($0) }
             .shared(in: dbQueue)
             .values()
         
