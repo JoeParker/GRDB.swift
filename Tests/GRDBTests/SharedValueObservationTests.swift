@@ -10,7 +10,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
             .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
@@ -62,7 +62,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
             .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
@@ -146,7 +146,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
             .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
@@ -198,7 +198,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
             .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
@@ -244,7 +244,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
             .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
@@ -338,7 +338,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         let sharedObservationMutex: Mutex<SharedValueObservation<Int>?> = Mutex(nil)
         sharedObservationMutex.store(ValueObservation
             .tracking { try Table("player").fetchCount($0) }
@@ -424,7 +424,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         var sharedObservation: SharedValueObservation<Int>? = ValueObservation
             .tracking { try Table("player").fetchCount($0) }
             .print(to: log)
@@ -523,7 +523,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         let fetchErrorMutex: Mutex<Error?> = Mutex(nil)
         let publisher = ValueObservation
             .tracking { db -> Int in
@@ -579,7 +579,7 @@ class SharedValueObservationTests: GRDBTestCase {
             }
         }
         
-        let log = Log()
+        let log = TestStream()
         let fetchErrorMutex: Mutex<Error?> = Mutex(nil)
         let publisher = ValueObservation
             .tracking { db -> Int in
@@ -640,26 +640,6 @@ class SharedValueObservationTests: GRDBTestCase {
             XCTAssertEqual(value, 0)
             break
         }
-    }
-}
-
-private class Log: TextOutputStream {
-    var strings: [String] = []
-    let lock = NSLock()
-    
-    func write(_ string: String) {
-        lock.lock()
-        strings.append(string)
-        lock.unlock()
-    }
-    
-    @discardableResult
-    func flush() -> [String] {
-        lock.lock()
-        let result = strings
-        strings = []
-        lock.unlock()
-        return result
     }
 }
 
