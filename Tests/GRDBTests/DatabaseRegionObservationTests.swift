@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 
 class DatabaseRegionObservationTests: GRDBTestCase {
+    @MainActor
     func testDatabaseRegionObservation_FullDatabase() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write {
@@ -41,6 +42,7 @@ class DatabaseRegionObservationTests: GRDBTestCase {
         }
     }
 
+    @MainActor
     func testDatabaseRegionObservation_ImmediateCancellation() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write {
@@ -68,6 +70,7 @@ class DatabaseRegionObservationTests: GRDBTestCase {
         }
     }
     
+    @MainActor
     func testDatabaseRegionObservationVariadic() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write {
@@ -110,6 +113,7 @@ class DatabaseRegionObservationTests: GRDBTestCase {
         }
     }
     
+    @MainActor
     func testDatabaseRegionObservationArray() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write {
@@ -152,6 +156,7 @@ class DatabaseRegionObservationTests: GRDBTestCase {
         }
     }
     
+    @MainActor
     func testDatabaseRegionDefaultCancellation() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write { try $0.execute(sql: "CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)") }
@@ -190,6 +195,7 @@ class DatabaseRegionObservationTests: GRDBTestCase {
         XCTAssertEqual(count, 2)
     }
     
+    @MainActor
     func testDatabaseRegionExtentNextTransaction() throws {
         let dbQueue = try makeDatabaseQueue()
         try dbQueue.write { try $0.execute(sql: "CREATE TABLE t(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)") }

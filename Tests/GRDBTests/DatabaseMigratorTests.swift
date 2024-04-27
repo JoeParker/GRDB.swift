@@ -14,6 +14,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
     
+    @MainActor
     func testEmptyMigratorAsync() throws {
         func test(writer: some DatabaseWriter) throws {
             let expectation = self.expectation(description: "")
@@ -95,6 +96,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
     
+    @MainActor
     func testNonEmptyMigratorAsync() throws {
         func test(writer: some DatabaseWriter) throws {
             var migrator = DatabaseMigrator()
@@ -202,6 +204,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
 
+    @MainActor
     func testEmptyMigratorPublisherIsAsynchronous() throws {
         guard #available(iOS 13, macOS 10.15, tvOS 13, *) else {
             throw XCTSkip("Combine is not available")
@@ -228,6 +231,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
     
+    @MainActor
     func testNonEmptyMigratorPublisherIsAsynchronous() throws {
         guard #available(iOS 13, macOS 10.15, tvOS 13, *) else {
             throw XCTSkip("Combine is not available")
@@ -255,6 +259,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
     
+    @MainActor
     func testMigratorPublisherDefaultScheduler() throws {
         guard #available(iOS 13, macOS 10.15, tvOS 13, *) else {
             throw XCTSkip("Combine is not available")
@@ -284,6 +289,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
     
+    @MainActor
     func testMigratorPublisherCustomScheduler() throws {
         guard #available(iOS 13, macOS 10.15, tvOS 13, *) else {
             throw XCTSkip("Combine is not available")
@@ -365,6 +371,7 @@ class DatabaseMigratorTests : GRDBTestCase {
         try Test(test).runAtTemporaryDatabasePath { try DatabasePool(path: $0) }
     }
     
+    @MainActor
     func testMigrationFailureTriggersRollback() throws {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("createPersons") { db in
