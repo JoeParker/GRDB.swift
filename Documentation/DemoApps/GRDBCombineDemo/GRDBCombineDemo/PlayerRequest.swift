@@ -32,7 +32,7 @@ struct PlayerRequest: Queryable {
         // granted by `appDatabase.reader`.
         // Some apps will prefer to call a dedicated method of `appDatabase`.
         ValueObservation
-            .tracking(fetchValue(_:))
+            .tracking { db in try fetchValue(db) }
             .publisher(
                 in: appDatabase.reader,
                 // The `.immediate` scheduling feeds the view right on

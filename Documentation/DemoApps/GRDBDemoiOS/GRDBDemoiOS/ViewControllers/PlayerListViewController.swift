@@ -136,7 +136,7 @@ class PlayerListViewController: UITableViewController {
         }
         
         playersCancellable = ValueObservation
-            .tracking(request.fetchAll(_:))
+            .tracking { db in try request.fetchAll(db) }
             .start(
                 in: AppDatabase.shared.reader,
                 // Immediate scheduling feeds the data source right on subscription,
