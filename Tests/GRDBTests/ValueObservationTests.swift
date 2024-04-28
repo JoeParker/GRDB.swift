@@ -24,6 +24,69 @@ class ValueObservationTests: GRDBTestCase {
         try test(makeDatabasePool())
     }
     
+    @available(iOS 13, macOS 10.15, tvOS 13, *)
+    @MainActor
+    func test_mainActor_ImmediateError() throws {
+        struct TestError: Error { }
+        
+        func test(_ dbWriter: some DatabaseWriter) throws {
+            // Create an observation
+            let observation = ValueObservation.trackingConstantRegion { _ in throw TestError() }
+            
+            // Start observation
+            let errorMutex: Mutex<TestError?> = Mutex(nil)
+            _ = observation.start(
+                in: dbWriter,
+                scheduling: .immediate,
+                onError: { @MainActor in errorMutex.store($0 as? TestError) },
+                onChange: { @MainActor _ in })
+            XCTAssertNotNil(errorMutex.load())
+        }
+        
+        try test(makeDatabaseQueue())
+        try test(makeDatabasePool())
+    }
+    
+    func testImmediateValue() throws {
+        func test(_ dbWriter: some DatabaseWriter) throws {
+            // Create an observation
+            let observation = ValueObservation.trackingConstantRegion { _ in 1 }
+            
+            // Start observation
+            let valueMutex: Mutex<Int?> = Mutex(nil)
+            _ = observation.start(
+                in: dbWriter,
+                scheduling: .immediate,
+                onError: { error in XCTFail("Unexpected error: \(error)") },
+                onChange: { value in valueMutex.store(value) })
+            XCTAssertNotNil(valueMutex.load())
+        }
+        
+        try test(makeDatabaseQueue())
+        try test(makeDatabasePool())
+    }
+    
+    @available(iOS 13, macOS 10.15, tvOS 13, *)
+    @MainActor
+    func test_mainActor_ImmediateValue() throws {
+        func test(_ dbWriter: some DatabaseWriter) throws {
+            // Create an observation
+            let observation = ValueObservation.trackingConstantRegion { _ in 1 }
+            
+            // Start observation
+            let valueMutex: Mutex<Int?> = Mutex(nil)
+            _ = observation.start(
+                in: dbWriter,
+                scheduling: .immediate,
+                onError: { @MainActor error in XCTFail("Unexpected error: \(error)") },
+                onChange: { @MainActor value in valueMutex.store(value) })
+            XCTAssertNotNil(valueMutex.load())
+        }
+        
+        try test(makeDatabaseQueue())
+        try test(makeDatabasePool())
+    }
+    
     @MainActor
     func testErrorCompletesTheObservation() throws {
         struct TestError: Error { }

@@ -102,11 +102,15 @@ extension ValueObservation: Refinable {
     ///     try Player.fetchAll(db)
     /// }
     ///
-    /// let cancellable = try observation.start(in: dbQueue) { error in
-    ///     // handle error
-    /// } onChange: { (players: [Player]) in
-    ///     print("Fresh players: \(players)")
-    /// }
+    /// let cancellable = try observation.start(
+    ///     in: dbQueue,
+    ///     scheduling: .async(onQueue: .main),
+    ///     onError: { error in
+    ///         // handle error
+    ///     },
+    ///     onChange: { (players: [Player]) in
+    ///         print("Fresh players: \(players)")
+    ///     })
     /// ```
     ///
     /// By default, fresh values are dispatched asynchronously on the
@@ -120,11 +124,15 @@ extension ValueObservation: Refinable {
     /// fatal error is raised otherwise):
     ///
     /// ```swift
-    /// let cancellable = try observation.start(in: dbQueue, scheduling: .immediate) { error in
-    ///     // handle error
-    /// } onChange: { (players: [Player]) in
-    ///     print("Fresh players: \(players)")
-    /// }
+    /// let cancellable = try observation.start(
+    ///     in: dbQueue,
+    ///     scheduling: .immediate,
+    ///     onError: { error in
+    ///         // handle error
+    ///     },
+    ///     onChange: { (players: [Player]) in
+    ///         print("Fresh players: \(players)")
+    ///     })
     /// // <- here "Fresh players" is already printed.
     /// ```
     ///
@@ -135,6 +143,7 @@ extension ValueObservation: Refinable {
     /// - parameter onChange: The closure to execute on receipt of a
     ///   fresh value.
     /// - returns: A DatabaseCancellable that can stop the observation.
+    @_disfavoredOverload // Prefer mainActor if available
     public func start(
         in reader: some DatabaseReader,
         scheduling scheduler: some ValueObservationScheduler = .async(onQueue: .main),
@@ -143,6 +152,87 @@ extension ValueObservation: Refinable {
     -> AnyDatabaseCancellable
     where Reducer: ValueReducer
     {
+        let observation = self.with {
+            $0.events.didFail = concat($0.events.didFail, onError)
+        }
+        observation.events.willStart?()
+        return reader._add(
+            observation: observation,
+            scheduling: scheduler,
+            onChange: onChange)
+    }
+    
+    /// Starts observing the database and schedules fresh values on the
+    /// main actor.
+    ///
+    /// The observation lasts until the returned cancellable is cancelled
+    /// or deallocated.
+    ///
+    /// For example:
+    ///
+    /// ```swift
+    /// let observation = ValueObservation.tracking { db in
+    ///     try Player.fetchAll(db)
+    /// }
+    ///
+    /// let cancellable = try observation.start(
+    ///     in: dbQueue,
+    ///     scheduler: .mainActor,
+    ///     onError: { error in
+    ///         // handle error
+    ///     },
+    ///     onChange: { (players: [Player]) in
+    ///         print("Fresh players: \(players)")
+    ///     })
+    /// ```
+    ///
+    /// Values are always notified on the main actor. The initial value is
+    /// asynchronously notified when you use the
+    /// ``ValueObservationScheduler/mainActor`` scheduler. It is immediately
+    /// notified when you use the
+    /// ``ValueObservationScheduler/immediate`` scheduler:
+    ///
+    /// ```swift
+    /// let cancellable = try observation.start(
+    ///     in: dbQueue,
+    ///     scheduling: .immediate,
+    ///     onError: { error in
+    ///         // handle error
+    ///     },
+    ///     onChange: { (players: [Player]) in
+    ///         print("Fresh players: \(players)")
+    ///     })
+    /// // <- here "Fresh players" is already printed.
+    /// ```
+    ///
+    /// - parameter reader: A DatabaseReader.
+    /// - parameter scheduler: A ValueObservationScheduler. By default,
+    ///   the initial value is not immediately fetched and notified.
+    /// - parameter onError: The closure to execute when the observation fails.
+    /// - parameter onChange: The closure to execute on receipt of a
+    ///   fresh value.
+    /// - returns: A DatabaseCancellable that can stop the observation.
+    @available(iOS 13, macOS 10.15, tvOS 13, *)
+    @MainActor
+    public func start(
+        in reader: some DatabaseReader,
+        scheduling scheduler: some MainActorValueObservationScheduler,
+        onError: @escaping @MainActor @Sendable (Error) -> Void,
+        onChange: @escaping @MainActor @Sendable (Reducer.Value) -> Void)
+    -> AnyDatabaseCancellable
+    where Reducer: ValueReducer
+    {
+        let onError: @Sendable (Error) -> Void = { error in
+            MainActor.assumeIsolated {
+                onError(error)
+            }
+        }
+        let onChange: @Sendable (Reducer.Value) -> Void = { value in
+            MainActor.assumeIsolated {
+                onChange(value)
+            }
+        }
+
         let observation = self.with {
             $0.events.didFail = concat($0.events.didFail, onError)
         }
