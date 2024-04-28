@@ -173,6 +173,7 @@ extension Association {
 
 // SelectionRequest conformance
 extension Association {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func selectWhenConnected(
         _ selection: @escaping @Sendable (Database) throws -> [any SQLSelectable]
     ) -> Self {
@@ -183,6 +184,7 @@ extension Association {
         }
     }
     
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func annotatedWhenConnected(
         with selection: @escaping @Sendable (Database) throws -> [any SQLSelectable]
     ) -> Self {
@@ -196,6 +198,7 @@ extension Association {
 
 // FilteredRequest conformance
 extension Association {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func filterWhenConnected(
         _ predicate: @escaping @Sendable (Database) throws -> any SQLExpressible
     ) -> Self {
@@ -209,6 +212,7 @@ extension Association {
 
 // OrderedRequest conformance
 extension Association {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func orderWhenConnected(
         _ orderings: @escaping @Sendable (Database) throws -> [any SQLOrderingTerm]
     ) -> Self {
@@ -247,6 +251,7 @@ extension Association {
 
 // AggregatingRequest conformance
 extension Association {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func groupWhenConnected(
         _ expressions: @escaping @Sendable (Database) throws -> [any SQLExpressible]
     ) -> Self {
@@ -257,6 +262,7 @@ extension Association {
         }
     }
     
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func havingWhenConnected(
         _ predicate: @escaping @Sendable (Database) throws -> any SQLExpressible
     ) -> Self {

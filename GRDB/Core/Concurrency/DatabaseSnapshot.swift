@@ -150,17 +150,33 @@ extension DatabaseSnapshot: DatabaseSnapshotReader {
         try reader.sync(block)
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         reader.async { value(.success($0)) }
     }
+#else
+    public func asyncRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        reader.async { value(.success($0)) }
+    }
+#endif
     
     public func unsafeRead<T>(_ value: (Database) throws -> T) rethrows -> T {
         try reader.sync(value)
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncUnsafeRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         reader.async { value(.success($0)) }
     }
+#else
+    public func asyncUnsafeRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        reader.async { value(.success($0)) }
+    }
+#endif
     
     public func unsafeReentrantRead<T>(_ value: (Database) throws -> T) throws -> T {
         try reader.reentrantSync(value)

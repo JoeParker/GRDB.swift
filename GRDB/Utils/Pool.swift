@@ -114,6 +114,7 @@ final class Pool<T: Sendable>: Sendable {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Eventually produces a tuple (element, release), where element is
     /// intended to be used asynchronously.
     ///
@@ -132,6 +133,33 @@ final class Pool<T: Sendable>: Sendable {
             execute(Result { try self.get() })
         }
     }
+#else
+    /// Eventually produces a tuple (element, release), where element is
+    /// intended to be used asynchronously.
+    ///
+    /// Client must call release(), only once, after the element has been used.
+    ///
+    /// - important: The `execute` argument is executed in a serial dispatch
+    ///   queue, so make sure you use the element asynchronously.
+    func asyncGet(
+        _ execute: transferring @escaping (Result<ElementAndRelease, Error>) -> Void
+    ) {
+        // DispatchQueue does not accept a transferring closure yet, as
+        // discussed at <https://forums.swift.org/t/how-can-i-use-region-based-isolation/71426/5>.
+        // So let's wrap the closure in a Sendable wrapper.
+        let execute = UncheckedSendableWrapper(value: execute)
+        
+        // Inspired by https://khanlou.com/2016/04/the-GCD-handbook/
+        // > We wait on the semaphore in the serial queue, which means that
+        // > we’ll have at most one blocked thread when we reach maximum
+        // > executing blocks on the concurrent queue. Any other tasks the user
+        // > enqueues will sit inertly on the serial queue waiting to be
+        // > executed, and won’t cause new threads to be started.
+        semaphoreWaitingQueue.async {
+            execute.value(Result { try self.get() })
+        }
+    }
+#endif
     
     /// Performs a synchronous block with an element. The element turns
     /// available after the block has executed.
@@ -184,6 +212,7 @@ final class Pool<T: Sendable>: Sendable {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Asynchronously runs the `barrier` function when no element is used, and
     /// before any other element is dequeued.
     func asyncBarrier(execute barrier: @escaping @Sendable () -> Void) {
@@ -192,6 +221,23 @@ final class Pool<T: Sendable>: Sendable {
             barrier()
         }
     }
+#else
+    /// Asynchronously runs the `barrier` function when no element is used, and
+    /// before any other element is dequeued.
+    func asyncBarrier(
+        execute barrier: transferring @escaping () -> Void
+    ) {
+        // DispatchQueue does not accept a transferring closure yet, as
+        // discussed at <https://forums.swift.org/t/how-can-i-use-region-based-isolation/71426/5>.
+        // So let's wrap the closure in a Sendable wrapper.
+        let barrier = UncheckedSendableWrapper(value: barrier)
+        
+        barrierQueue.async(flags: [.barrier]) {
+            self.itemsGroup.wait()
+            barrier.value()
+        }
+    }
+#endif
 }
 
 enum PoolCompletion {

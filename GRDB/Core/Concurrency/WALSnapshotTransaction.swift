@@ -95,6 +95,7 @@ final class WALSnapshotTransaction: @unchecked Sendable {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Schedules database operations for execution, and
     /// returns immediately.
     func asyncRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
@@ -114,6 +115,27 @@ final class WALSnapshotTransaction: @unchecked Sendable {
             }
         }
     }
+#else
+    /// Schedules database operations for execution, and
+    /// returns immediately.
+    func asyncRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        guard let databaseAccess = databaseAccessMutex.load() else {
+            value(.failure(DatabaseError.snapshotIsLost()))
+            return
+        }
+        
+        databaseAccess.reader.async { db in
+            // We should check the validity of the snapshot, as DatabaseSnapshotPool does.
+            // At least check if self was closed:
+            if self.databaseAccessMutex.load() == nil {
+                value(.failure(DatabaseError.snapshotIsLost()))
+            }
+            value(.success(db))
+        }
+    }
+#endif
     
     func close() {
         databaseAccessMutex.withLock { databaseAccess in

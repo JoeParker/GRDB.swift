@@ -365,6 +365,7 @@ extension DatabasePool: DatabaseReader {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         guard let readerPool else {
             value(.failure(DatabaseError.connectionIsClosed()))
@@ -394,6 +395,39 @@ extension DatabasePool: DatabaseReader {
             }
         }
     }
+#else
+    public func asyncRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        guard let readerPool else {
+            value(.failure(DatabaseError.connectionIsClosed()))
+            return
+        }
+        
+        readerPool.asyncGet { result in
+            do {
+                let (reader, releaseReader) = try result.get()
+                // Second async jump because that's how `Pool.async` has to be used.
+                reader.async { db in
+                    defer {
+                        try? db.commit() // Ignore commit error
+                        releaseReader(.reuse)
+                    }
+                    do {
+                        // The block isolation comes from the DEFERRED transaction.
+                        try db.beginTransaction(.deferred)
+                        try db.clearSchemaCacheIfNeeded()
+                        value(.success(db))
+                    } catch {
+                        value(.failure(error))
+                    }
+                }
+            } catch {
+                value(.failure(error))
+            }
+        }
+    }
+#endif
     
     @_disfavoredOverload // SR-15150 Async overloading in protocol implementation fails
     public func unsafeRead<T>(_ value: (Database) throws -> T) throws -> T {
@@ -409,6 +443,7 @@ extension DatabasePool: DatabaseReader {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncUnsafeRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         guard let readerPool else {
             value(.failure(DatabaseError.connectionIsClosed()))
@@ -435,6 +470,36 @@ extension DatabasePool: DatabaseReader {
             }
         }
     }
+#else
+    public func asyncUnsafeRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        guard let readerPool else {
+            value(.failure(DatabaseError.connectionIsClosed()))
+            return
+        }
+        
+        readerPool.asyncGet { result in
+            do {
+                let (reader, releaseReader) = try result.get()
+                // Second async jump because that's how `Pool.async` has to be used.
+                reader.async { db in
+                    defer {
+                        releaseReader(.reuse)
+                    }
+                    do {
+                        try db.clearSchemaCacheIfNeeded()
+                        value(.success(db))
+                    } catch {
+                        value(.failure(error))
+                    }
+                }
+            } catch {
+                value(.failure(error))
+            }
+        }
+    }
+#endif
     
     public func unsafeReentrantRead<T>(_ value: (Database) throws -> T) throws -> T {
         if let reader = currentReader {
@@ -454,10 +519,19 @@ extension DatabasePool: DatabaseReader {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func spawnConcurrentRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         asyncConcurrentRead(value)
     }
+#else
+    public func spawnConcurrentRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        asyncConcurrentRead(value)
+    }
+#endif
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Performs an asynchronous read access.
     ///
     /// This method must be called from the writer dispatch queue, outside of
@@ -590,6 +664,142 @@ extension DatabasePool: DatabaseReader {
         // Block the writer queue until snapshot isolation success or error
         _ = isolationSemaphore.wait(timeout: .distantFuture)
     }
+#else
+    /// Performs an asynchronous read access.
+    ///
+    /// This method must be called from the writer dispatch queue, outside of
+    /// any transaction. You'll get a fatal error otherwise.
+    ///
+    /// The `value` function is guaranteed to see the database in the last
+    /// committed state at the moment this method is called. Eventual
+    /// concurrent database updates are not visible from the function.
+    ///
+    /// This method returns as soon as the isolation guarantee described above
+    /// has been established.
+    ///
+    /// In the example below, the number of players is fetched concurrently with
+    /// the player insertion. Yet it is guaranteed to be zero:
+    ///
+    /// ```swift
+    /// try writer.asyncWriteWithoutTransaction { db in
+    ///     // Delete all players
+    ///     try Player.deleteAll()
+    ///
+    ///     // Count players concurrently
+    ///     writer.asyncConcurrentRead { dbResult in
+    ///         do {
+    ///             let db = try dbResult.get()
+    ///             // Guaranteed to be zero
+    ///             let count = try Player.fetchCount(db)
+    ///         } catch {
+    ///             // Handle error
+    ///         }
+    ///     }
+    ///
+    ///     // Insert a player
+    ///     try Player(...).insert(db)
+    /// }
+    /// ```
+    ///
+    /// - parameter value: A function that accesses the database.
+    public func asyncConcurrentRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        // Check that we're on the writer queue...
+        writer.execute { db in
+            // ... and that no transaction is opened.
+            GRDBPrecondition(!db.isInsideTransaction, """
+                must not be called from inside a transaction. \
+                If this error is raised from a DatabasePool.write block, use \
+                DatabasePool.writeWithoutTransaction instead (and use \
+                transactions when needed).
+                """)
+        }
+        
+        // The semaphore that blocks the writing dispatch queue until snapshot
+        // isolation has been established:
+        let isolationSemaphore = DispatchSemaphore(value: 0)
+        
+        do {
+            guard let readerPool else {
+                throw DatabaseError.connectionIsClosed()
+            }
+            let (reader, releaseReader) = try readerPool.get()
+            reader.async { db in
+                defer {
+                    try? db.commit() // Ignore commit error
+                    releaseReader(.reuse)
+                }
+                do {
+                    // https://www.sqlite.org/isolation.html
+                    //
+                    // > In WAL mode, SQLite exhibits "snapshot isolation". When
+                    // > a read transaction starts, that reader continues to see
+                    // > an unchanging "snapshot" of the database file as it
+                    // > existed at the moment in time when the read transaction
+                    // > started. Any write transactions that commit while the
+                    // > read transaction is active are still invisible to the
+                    // > read transaction, because the reader is seeing a
+                    // > snapshot of database file from a prior moment in time.
+                    //
+                    // That's exactly what we need. But what does "when read
+                    // transaction starts" mean?
+                    //
+                    // http://www.sqlite.org/lang_transaction.html
+                    //
+                    // > Deferred [transaction] means that no locks are acquired
+                    // > on the database until the database is first accessed.
+                    // > [...] Locks are not acquired until the first read or
+                    // > write operation. [...] Because the acquisition of locks
+                    // > is deferred until they are needed, it is possible that
+                    // > another thread or process could create a separate
+                    // > transaction and write to the database after the BEGIN
+                    // > on the current thread has executed.
+                    //
+                    // Now that's precise enough: SQLite defers snapshot
+                    // isolation until the first SELECT:
+                    //
+                    //     Reader                       Writer
+                    //     BEGIN DEFERRED TRANSACTION
+                    //                                  UPDATE ... (1)
+                    //     Here the change (1) is visible from the reader
+                    //     SELECT ...
+                    //                                  UPDATE ... (2)
+                    //     Here the change (2) is not visible from the reader
+                    //
+                    // We thus have to perform a select that establishes the
+                    // snapshot isolation before we release the writer queue:
+                    //
+                    //     Reader                       Writer
+                    //     BEGIN DEFERRED TRANSACTION
+                    //     SELECT anything
+                    //                                  UPDATE ... (1)
+                    //     Here the change (1) is not visible from the reader
+                    //
+                    // Since any select goes, use `PRAGMA schema_version`.
+                    try db.beginTransaction(.deferred)
+                    try db.clearSchemaCacheIfNeeded()
+                } catch {
+                    isolationSemaphore.signal()
+                    value(.failure(error))
+                    return
+                }
+                
+                // Now that we have an isolated snapshot of the last commit, we
+                // can release the writer queue.
+                isolationSemaphore.signal()
+                
+                value(.success(db))
+            }
+        } catch {
+            isolationSemaphore.signal()
+            value(.failure(error))
+        }
+        
+        // Block the writer queue until snapshot isolation success or error
+        _ = isolationSemaphore.wait(timeout: .distantFuture)
+    }
+#endif
     
     /// Invalidates open read-only SQLite connections.
     ///
@@ -747,6 +957,7 @@ extension DatabasePool: DatabaseWriter {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncBarrierWriteWithoutTransaction(_ updates: @escaping @Sendable (Result<Database, Error>) -> Void) {
         guard let readerPool else {
             updates(.failure(DatabaseError.connectionIsClosed()))
@@ -756,6 +967,19 @@ extension DatabasePool: DatabaseWriter {
             self.writer.sync { updates(.success($0)) }
         }
     }
+#else
+    public func asyncBarrierWriteWithoutTransaction(
+        _ updates: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        guard let readerPool else {
+            updates(.failure(DatabaseError.connectionIsClosed()))
+            return
+        }
+        readerPool.asyncBarrier {
+            self.writer.sync { updates(.success($0)) }
+        }
+    }
+#endif
     
     /// Wraps database operations inside a database transaction.
     ///
@@ -801,9 +1025,17 @@ extension DatabasePool: DatabaseWriter {
         try writer.reentrantSync(updates)
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncWriteWithoutTransaction(_ updates: @escaping @Sendable (Database) -> Void) {
         writer.async(updates)
     }
+#else
+    public func asyncWriteWithoutTransaction(
+        _ updates: transferring @escaping (Database) -> Void
+    ) {
+        writer.async(updates)
+    }
+#endif
 }
 
 extension DatabasePool {

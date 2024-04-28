@@ -255,6 +255,7 @@ public struct DatabaseMigrator: Sendable {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Schedules unapplied migrations for execution, and returns immediately.
     ///
     /// - parameter writer: A DatabaseWriter.
@@ -278,6 +279,31 @@ public struct DatabaseMigrator: Sendable {
             }
         }
     }
+#else
+    /// Schedules unapplied migrations for execution, and returns immediately.
+    ///
+    /// - parameter writer: A DatabaseWriter.
+    /// - parameter completion: A function that can access the database. Its
+    ///   argument is a `Result` that provides a connection to the migrated
+    ///   database, or the failure that prevented the migrations
+    ///   from succeeding.
+    public func asyncMigrate(
+        _ writer: some DatabaseWriter,
+        completion: transferring @escaping (Result<Database, Error>) -> Void)
+    {
+        writer.asyncBarrierWriteWithoutTransaction { dbResult in
+            do {
+                let db = try dbResult.get()
+                if let lastMigration = _migrations.last {
+                    try migrate(db, upTo: lastMigration.identifier)
+                }
+                completion(.success(db))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+#endif
     
     // MARK: - Querying Migrations
     

@@ -31,6 +31,7 @@ public protocol TypedRequest<RowDecoder> {
 /// - ``select(sql:arguments:)``
 /// - ``selectWhenConnected(_:)``
 public protocol SelectionRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     /// Defines the result columns.
     ///
     /// The `selection` parameter is a closure that accepts a database
@@ -62,6 +63,7 @@ public protocol SelectionRequest {
         _ selection: @escaping @Sendable (Database) throws -> [any SQLSelectable]
     ) -> Self
     
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     /// Appends result columns to the selected columns.
     ///
     /// The `selection` parameter is a closure that accepts a database
@@ -227,6 +229,7 @@ extension SelectionRequest {
 /// - ``filterWhenConnected(_:)``
 /// - ``none()``
 public protocol FilteredRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     /// Filters the fetched rows with a boolean SQL expression.
     ///
     /// The `predicate` parameter is a closure that accepts a database
@@ -721,6 +724,7 @@ extension TableRequest where Self: AggregatingRequest {
 /// - ``having(sql:arguments:)``
 /// - ``havingWhenConnected(_:)``
 public protocol AggregatingRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     /// Returns an aggregate request grouped on the given SQL expressions.
     ///
     /// The `expressions` parameter is a closure that accepts a database
@@ -747,6 +751,7 @@ public protocol AggregatingRequest {
         _ expressions: @escaping @Sendable (Database) throws -> [any SQLExpressible]
     ) -> Self
     
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     /// Filters the aggregated groups with a boolean SQL expression.
     ///
     /// The `predicate` parameter is a closure that accepts a database
@@ -927,6 +932,7 @@ extension AggregatingRequest {
 /// - ``unordered()``
 /// - ``withStableOrder()``
 public protocol OrderedRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     /// Sorts the fetched rows according to the given SQL ordering terms.
     ///
     /// The `orderings` parameter is a closure that accepts a database

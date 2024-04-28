@@ -247,6 +247,7 @@ extension DatabaseQueue: DatabaseReader {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         writer.async { db in
             defer {
@@ -267,14 +268,46 @@ extension DatabaseQueue: DatabaseReader {
             }
         }
     }
+#else
+    public func asyncRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        writer.async { db in
+            defer {
+                // Ignore error because we can not notify it.
+                try? db.commit()
+                try? db.endReadOnly()
+            }
+            
+            do {
+                // Enter read-only mode before starting a transaction, so that the
+                // transaction commit does not trigger database observation.
+                // See <https://github.com/groue/GRDB.swift/pull/1213>.
+                try db.beginReadOnly()
+                try db.beginTransaction(.deferred)
+                value(.success(db))
+            } catch {
+                value(.failure(error))
+            }
+        }
+    }
+#endif
     
     public func unsafeRead<T>(_ value: (Database) throws -> T) rethrows -> T {
         try writer.sync(value)
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncUnsafeRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         writer.async { value(.success($0)) }
     }
+#else
+    public func asyncUnsafeRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        writer.async { value(.success($0)) }
+    }
+#endif
     
     public func unsafeReentrantRead<T>(_ value: (Database) throws -> T) rethrows -> T {
         try writer.reentrantSync(value)
@@ -381,9 +414,17 @@ extension DatabaseQueue: DatabaseWriter {
         try writer.sync(updates)
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncBarrierWriteWithoutTransaction(_ updates: @escaping @Sendable (Result<Database, Error>) -> Void) {
         writer.async { updates(.success($0)) }
     }
+#else
+    public func asyncBarrierWriteWithoutTransaction(
+        _ updates: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        writer.async { updates(.success($0)) }
+    }
+#endif
     
     /// Executes database operations, and returns their result after they have
     /// finished executing.
@@ -427,9 +468,17 @@ extension DatabaseQueue: DatabaseWriter {
         try writer.reentrantSync(updates)
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncWriteWithoutTransaction(_ updates: @escaping @Sendable (Database) -> Void) {
         writer.async(updates)
     }
+#else
+    public func asyncWriteWithoutTransaction(
+        _ updates: transferring @escaping (Database) -> Void
+    ) {
+        writer.async(updates)
+    }
+#endif
 }
 
 // MARK: - Temp Copy

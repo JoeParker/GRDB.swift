@@ -17,10 +17,15 @@ public protocol ValueObservationScheduler: Sendable {
     /// If the result is true, then this method was called on the main thread.
     func immediateInitialValue() -> Bool
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     func schedule(_ action: @escaping @Sendable () -> Void)
+#else
+    func schedule(_ action: transferring @escaping () -> Void)
+#endif
 }
 
 extension ValueObservationScheduler {
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     func scheduleInitial(_ action: @escaping @Sendable () -> Void) {
         if immediateInitialValue() {
             action()
@@ -28,6 +33,15 @@ extension ValueObservationScheduler {
             schedule(action)
         }
     }
+#else
+    func scheduleInitial(_ action: transferring @escaping () -> Void) {
+        if immediateInitialValue() {
+            action()
+        } else {
+            schedule(action)
+        }
+    }
+#endif
 }
 
 // MARK: - AsyncValueObservationScheduler
@@ -42,9 +56,15 @@ public struct AsyncValueObservationScheduler: ValueObservationScheduler {
     
     public func immediateInitialValue() -> Bool { false }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func schedule(_ action: @escaping @Sendable () -> Void) {
         queue.async(execute: action)
     }
+#else
+    public func schedule(_ action: transferring @escaping () -> Void) {
+        queue.async(execute: action)
+    }
+#endif
 }
 
 extension ValueObservationScheduler where Self == AsyncValueObservationScheduler {
@@ -90,9 +110,22 @@ public struct ImmediateValueObservationScheduler: ValueObservationScheduler, Sen
         return true
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func schedule(_ action: @escaping @Sendable () -> Void) {
         DispatchQueue.main.async(execute: action)
     }
+#else
+    public func schedule(_ action: transferring @escaping () -> Void) {
+        // DispatchQueue does not accept a transferring closure yet, as
+        // discussed at <https://forums.swift.org/t/how-can-i-use-region-based-isolation/71426/5>.
+        // So let's wrap the closure in a Sendable wrapper.
+        let action = UncheckedSendableWrapper(value: action)
+        
+        DispatchQueue.main.async {
+            action.value()
+        }
+    }
+#endif
 }
 
 extension ValueObservationScheduler where Self == ImmediateValueObservationScheduler {

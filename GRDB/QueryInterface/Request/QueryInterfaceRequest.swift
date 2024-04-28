@@ -116,6 +116,7 @@ extension QueryInterfaceRequest: FetchRequest {
 // MARK: - Request Derivation
 
 extension QueryInterfaceRequest: SelectionRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func selectWhenConnected(
         _ selection: @escaping @Sendable (Database) throws -> [any SQLSelectable])
     -> Self
@@ -280,6 +281,7 @@ extension QueryInterfaceRequest: SelectionRequest {
         .asRequest(of: PrimaryKey.self)
     }
     
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func annotatedWhenConnected(
         with selection: @escaping @Sendable (Database) throws -> [any SQLSelectable])
     -> Self
@@ -293,6 +295,7 @@ extension QueryInterfaceRequest: SelectionRequest {
 }
 
 extension QueryInterfaceRequest: FilteredRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func filterWhenConnected(
         _ predicate: @escaping @Sendable (Database) throws -> any SQLExpressible)
     -> Self
@@ -306,6 +309,7 @@ extension QueryInterfaceRequest: FilteredRequest {
 }
 
 extension QueryInterfaceRequest: OrderedRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func orderWhenConnected(
         _ orderings: @escaping @Sendable (Database) throws -> [any SQLOrderingTerm])
     -> Self
@@ -353,6 +357,7 @@ extension QueryInterfaceRequest: OrderedRequest {
 }
 
 extension QueryInterfaceRequest: AggregatingRequest {
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func groupWhenConnected(
         _ expressions: @escaping @Sendable (Database) throws -> [any SQLExpressible])
     -> Self
@@ -364,6 +369,7 @@ extension QueryInterfaceRequest: AggregatingRequest {
         }
     }
     
+    // TODO: use transferring result, when <https://github.com/apple/swift/issues/73316> is fixed.
     public func havingWhenConnected(
         _ predicate: @escaping @Sendable (Database) throws -> any SQLExpressible)
     -> Self

@@ -599,6 +599,7 @@ extension ValueObservation {
     
     // MARK: - Creating ValueObservation
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Creates an optimized `ValueObservation` that notifies the fetched value
     /// whenever it changes.
     ///
@@ -745,7 +746,156 @@ extension ValueObservation {
             trackingMode: .constantRegionRecordedFromSelection,
             makeReducer: { ValueReducers.Fetch(fetch: fetch) })
     }
+#else
+    /// Creates an optimized `ValueObservation` that notifies the fetched value
+    /// whenever it changes.
+    ///
+    /// Unlike observations created with ``tracking(_:)``, the returned
+    /// observation can reduce database contention, by not blocking
+    /// database writes when fresh values are fetched. It can also avoid
+    /// fetching fresh values from the main thread, after the database was
+    /// modified on the main thread.
+    ///
+    /// Those scheduling optimizations are only applied when the observation
+    /// is started from a ``DatabasePool``. You can start such an
+    /// observation from a ``DatabaseQueue``, but the optimizations will not
+    /// be applied. The notified values will be the same, though. This makes
+    /// it possible to use a pool in the main application, and an in-memory
+    /// queue in tests and Xcode previews.
+    ///
+    /// **Precondition**: The `fetch` function must perform requests that fetch
+    /// from a single and constant database region. This region is made of
+    /// tables, columns, and rowids of individual rows. All changes that happen
+    /// outside of this region are not notified.
+    ///
+    /// For example, the observations below track a constant region and can
+    /// be optimized:
+    ///
+    /// ```swift
+    /// // Tracks the full 'player' table
+    /// let observation = ValueObservation.trackingConstantRegion { db -> [Player] in
+    ///     try Player.fetchAll(db)
+    /// }
+    ///
+    /// // Tracks the row with id 42 in the 'player' table
+    /// let observation = ValueObservation.trackingConstantRegion { db -> Player? in
+    ///     try Player.fetchOne(db, key: 42)
+    /// }
+    ///
+    /// // Tracks the 'score' column in the 'player' table
+    /// let observation = ValueObservation.trackingConstantRegion { db -> Int? in
+    ///     try Int.fetchOne(db, sql: "SELECT MAX(score) FROM player")
+    /// }
+    ///
+    /// // Tracks both the 'player' and 'team' tables
+    /// let observation = ValueObservation.trackingConstantRegion { db -> ([Team], [Player]) in
+    ///     let teams = try Team.fetchAll(db)
+    ///     let players = try Player.fetchAll(db)
+    ///     return (teams, players)
+    /// }
+    /// ```
+    ///
+    /// **Observations that do not track a constant database region must not
+    /// use this method, because some changes may not be notified to
+    /// the application.**
+    ///
+    /// For example, the observations below do not track a constant region.
+    /// They are correctly defined with ``tracking(_:)``, since
+    /// `trackingConstantRegion(_:)` is unsuited:
+    ///
+    /// ```swift
+    /// // Does not always track the same row in the 'player' table:
+    /// let observation = ValueObservation.tracking { db -> Player in
+    ///     let config = try AppConfiguration.find(db)
+    ///     let playerId: Int64 = config.favoritePlayerId
+    ///     return try Player.find(db, id: playerId)
+    /// }
+    ///
+    /// // Does not always track the 'player' table, or not always the same
+    /// // rows in the 'player' table:
+    /// let observation = ValueObservation.tracking { db -> [Player] in
+    ///     let config = try AppConfiguration.find(db)
+    ///     let playerIds: [Int64] = config.favoritePlayerIds
+    ///     // Not only playerIds can change, but when it is empty,
+    ///     // the player table is not tracked at all.
+    ///     return try Player.fetchAll(db, ids: playerIds)
+    /// }
+    ///
+    /// // Sometimes tracks the 'food' table, and sometimes the 'beverage' table.
+    /// let observation = ValueObservation.tracking { db -> Int in
+    ///     let config = try AppConfiguration.find(db)
+    ///     switch config.selection {
+    ///     case .food:
+    ///         return try Food.fetchCount(db)
+    ///     case .beverage:
+    ///         return try Beverage.fetchCount(db)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Since only observations of a constant region can achieve important
+    /// scheduling optimizations (such as the guarantee that fresh values
+    /// are never fetched from the main thread –
+    /// see <doc:ValueObservation#ValueObservation-Scheduling>), you can
+    /// always create one:
+    ///
+    /// - With ``tracking(regions:fetch:)``, you provide all tracked
+    ///   region(s) when the observation is created:
+    ///
+    ///     ```swift
+    ///     // Optimized observation that explicitly tracks the
+    ///     // 'appConfiguration', 'food', and 'beverage' tables:
+    ///     let observation = ValueObservation.tracking(
+    ///         regions: [
+    ///             AppConfiguration.all(),
+    ///             Food.all(),
+    ///             Beverage.all(),
+    ///         ],
+    ///         fetch: { db -> Int in
+    ///             let config = try AppConfiguration.find(db)
+    ///             switch config.selection {
+    ///             case .food:
+    ///                 return try Food.fetchCount(db)
+    ///             case .beverage:
+    ///                 return try Beverage.fetchCount(db)
+    ///             }
+    ///         })
+    ///     ```
+    ///
+    /// - With ``Database/registerAccess(to:)``, you extend the list of
+    ///   tracked region(s) from the fetching closure:
+    ///
+    ///     ```swift
+    ///     // Optimized observation that implicitly tracks the
+    ///     // 'appConfiguration' table, and explicitly tracks 'food'
+    ///     // and 'beverage':
+    ///     let observation = ValueObservation.trackingConstantRegion { db -> Int in
+    ///         try db.registerAccess(to: Food.all())
+    ///         try db.registerAccess(to: Beverage.all())
+    ///
+    ///         let config = try AppConfiguration.find(db)
+    ///         switch config.selection {
+    ///         case .food:
+    ///             return try Food.fetchCount(db)
+    ///         case .beverage:
+    ///             return try Beverage.fetchCount(db)
+    ///         }
+    ///     }
+    ///     ```
+    ///
+    /// - parameter fetch: The closure that fetches the observed value.
+    public static func trackingConstantRegion<Value>(
+        _ fetch: @escaping @Sendable (Database) throws -> transferring Value)
+    -> Self
+    where Reducer == ValueReducers.Fetch<Value>
+    {
+        .init(
+            trackingMode: .constantRegionRecordedFromSelection,
+            makeReducer: { ValueReducers.Fetch(fetch: fetch) })
+    }
+#endif
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Creates a `ValueObservation` that notifies the fetched value whenever
     /// the provided regions are modified.
     ///
@@ -817,7 +967,81 @@ extension ValueObservation {
     {
         tracking(regions: [region] + otherRegions, fetch: fetch)
     }
+#else
+    /// Creates a `ValueObservation` that notifies the fetched value whenever
+    /// the provided regions are modified.
+    ///
+    /// Only database transactions that impact the provided regions trigger the
+    /// notification of fresh values.
+    ///
+    /// For example:
+    ///
+    /// ```swift
+    /// // Tracks the full database
+    /// let observation = ValueObservation.tracking(
+    ///     region: .fullDatabase,
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the full 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     region: Player.all(),
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the full 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     region: Table("player"),
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the row with id 42 in the 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     region: Player.filter(id: 42),
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the 'score' column in the 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     region: Player.select(Column("score"),
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the 'score' column in the 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     region: SQLRequest("SELECT score FROM player"),
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks both the 'player' and 'team' tables
+    /// let observation = ValueObservation.tracking(
+    ///     region: Player.all(), Team.all(),
+    ///     fetch: { db in ... })
+    /// ```
+    ///
+    /// Unlike observations created with ``tracking(_:)``, the returned
+    /// observation can reduce database contention, by not blocking
+    /// database writes when fresh values are fetched. It can also avoid
+    /// fetching fresh values from the main thread, after the database was
+    /// modified on the main thread.
+    ///
+    /// Those scheduling optimizations are only applied when the observation
+    /// is started from a ``DatabasePool``. You can start such an
+    /// observation from a ``DatabaseQueue``, but the optimizations will not
+    /// be applied. The notified values will be the same, though. This makes
+    /// it possible to use a pool in the main application, and an in-memory
+    /// queue in tests and Xcode previews.
+    ///
+    /// - parameter region: A region to observe.
+    /// - parameter otherRegions: A list of supplementary regions
+    ///   to observe.
+    /// - parameter fetch: The closure that fetches the observed value.
+    public static func tracking<Value>(
+        region: any DatabaseRegionConvertible,
+        _ otherRegions: any DatabaseRegionConvertible...,
+        fetch: @escaping @Sendable (Database) throws -> transferring Value)
+    -> Self
+    where Reducer == ValueReducers.Fetch<Value>
+    {
+        tracking(regions: [region] + otherRegions, fetch: fetch)
+    }
+#endif
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Creates a `ValueObservation` that notifies the fetched value whenever
     /// the provided regions are modified.
     ///
@@ -888,7 +1112,80 @@ extension ValueObservation {
             trackingMode: .constantRegion(regions),
             makeReducer: { ValueReducers.Fetch(fetch: fetch) })
     }
+#else
+    /// Creates a `ValueObservation` that notifies the fetched value whenever
+    /// the provided regions are modified.
+    ///
+    /// Only database transactions that impact the provided regions trigger the
+    /// notification of fresh values.
+    ///
+    /// For example:
+    ///
+    /// ```swift
+    /// // Tracks the full database
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [.fullDatabase],
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the full 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [Player.all()],
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the full 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [Table("player")],
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the row with id 42 in the 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [Player.filter(id: 42)],
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the 'score' column in the 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [Player.select(Column("score")],
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks the 'score' column in the 'player' table
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [SQLRequest("SELECT score FROM player")],
+    ///     fetch: { db in ... })
+    ///
+    /// // Tracks both the 'player' and 'team' tables
+    /// let observation = ValueObservation.tracking(
+    ///     regions: [Player.all(), Team.all()],
+    ///     fetch: { db in ... })
+    /// ```
+    ///
+    /// Unlike observations created with ``tracking(_:)``, the returned
+    /// observation can reduce database contention, by not blocking
+    /// database writes when fresh values are fetched. It can also avoid
+    /// fetching fresh values from the main thread, after the database was
+    /// modified on the main thread.
+    ///
+    /// Those scheduling optimizations are only applied when the observation
+    /// is started from a ``DatabasePool``. You can start such an
+    /// observation from a ``DatabaseQueue``, but the optimizations will not
+    /// be applied. The notified values will be the same, though. This makes
+    /// it possible to use a pool in the main application, and an in-memory
+    /// queue in tests and Xcode previews.
+    ///
+    /// - parameter regions: An array of observed regions.
+    /// - parameter fetch: The closure that fetches the observed value.
+    public static func tracking<Value>(
+        regions: [any DatabaseRegionConvertible],
+        fetch: @escaping @Sendable (Database) throws -> transferring Value)
+    -> Self
+    where Reducer == ValueReducers.Fetch<Value>
+    {
+        .init(
+            trackingMode: .constantRegion(regions),
+            makeReducer: { ValueReducers.Fetch(fetch: fetch) })
+    }
+#endif
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Creates a `ValueObservation` that notifies the fetched values whenever
     /// it changes.
     ///
@@ -945,4 +1242,62 @@ extension ValueObservation {
             trackingMode: .nonConstantRegionRecordedFromSelection,
             makeReducer: { ValueReducers.Fetch(fetch: fetch) })
     }
+#else
+    /// Creates a `ValueObservation` that notifies the fetched values whenever
+    /// it changes.
+    ///
+    /// For example:
+    ///
+    /// ```swift
+    /// let observation = ValueObservation.tracking { db in
+    ///     try Player.fetchAll(db)
+    /// }
+    ///
+    /// let cancellable = try observation.start(in: dbQueue) { error in
+    ///     // handle error
+    /// } onChange: { (players: [Player]) in
+    ///     print("Players have changed")
+    /// }
+    /// ```
+    ///
+    /// An observation can perform multiple requests, from multiple database
+    /// tables, and even use raw SQL:
+    ///
+    /// ```swift
+    /// struct HallOfFame {
+    ///     var totalPlayerCount: Int
+    ///     var bestPlayers: [Player]
+    /// }
+    ///
+    /// // An observation of HallOfFame
+    /// let observation = ValueObservation.tracking { db -> HallOfFame in
+    ///     let totalPlayerCount = try Player.fetchCount(db)
+    ///
+    ///     let bestPlayers = try Player
+    ///         .order(Column("score").desc)
+    ///         .limit(10)
+    ///         .fetchAll(db)
+    ///
+    ///     return HallOfFame(
+    ///         totalPlayerCount: totalPlayerCount,
+    ///         bestPlayers: bestPlayers)
+    /// }
+    ///
+    /// // An observation of the maximum score
+    /// let observation = ValueObservation.tracking { db in
+    ///     try Int.fetchOne(db, sql: "SELECT MAX(score) FROM player")
+    /// }
+    /// ```
+    ///
+    /// - parameter fetch: The closure that fetches the observed value.
+    public static func tracking<Value>(
+        _ fetch: @escaping @Sendable (Database) throws -> transferring Value)
+    -> Self
+    where Reducer == ValueReducers.Fetch<Value>
+    {
+        .init(
+            trackingMode: .nonConstantRegionRecordedFromSelection,
+            makeReducer: { ValueReducers.Fetch(fetch: fetch) })
+    }
+#endif
 }

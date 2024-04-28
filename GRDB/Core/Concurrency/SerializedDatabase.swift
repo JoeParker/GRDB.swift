@@ -222,6 +222,7 @@ final class SerializedDatabase {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     /// Schedules database operations for execution, and returns immediately.
     func async(_ block: @escaping @Sendable (Database) -> Void) {
         queue.async {
@@ -229,6 +230,22 @@ final class SerializedDatabase {
             self.preconditionNoUnsafeTransactionLeft(self.db)
         }
     }
+#else
+    /// Schedules database operations for execution, and returns immediately.
+    func async(
+        _ block: transferring @escaping (Database) -> Void
+    ) {
+        // DispatchQueue does not accept a transferring closure yet, as
+        // discussed at <https://forums.swift.org/t/how-can-i-use-region-based-isolation/71426/5>.
+        // So let's wrap the closure in a Sendable wrapper.
+        let block = UncheckedSendableWrapper(value: block)
+        
+        queue.async {
+            block.value(self.db)
+            self.preconditionNoUnsafeTransactionLeft(self.db)
+        }
+    }
+#endif
     
     /// Returns true if any only if the current dispatch queue is valid.
     var onValidQueue: Bool {

@@ -293,6 +293,7 @@ extension DatabaseSnapshotPool: DatabaseSnapshotReader {
         }
     }
     
+#if compiler(<6.0) && !hasFeature(TransferringArgsAndResults)
     public func asyncRead(_ value: @escaping @Sendable (Result<Database, Error>) -> Void) {
         guard let readerPool else {
             value(.failure(DatabaseError.connectionIsClosed()))
@@ -312,6 +313,29 @@ extension DatabaseSnapshotPool: DatabaseSnapshotReader {
             }
         }
     }
+#else
+    public func asyncRead(
+        _ value: transferring @escaping (Result<Database, Error>) -> Void
+    ) {
+        guard let readerPool else {
+            value(.failure(DatabaseError.connectionIsClosed()))
+            return
+        }
+        
+        readerPool.asyncGet { result in
+            do {
+                let (reader, releaseReader) = try result.get()
+                // Second async jump because that's how `Pool.async` has to be used.
+                reader.async { db in
+                    value(.success(db))
+                    releaseReader(self.poolCompletion(db))
+                }
+            } catch {
+                value(.failure(error))
+            }
+        }
+    }
+#endif
     
     public func unsafeReentrantRead<T>(_ value: (Database) throws -> T) throws -> T {
         if let reader = currentReader {
